@@ -1,7 +1,7 @@
 defmodule Aurinko.MixProject do
   use Mix.Project
 
-  @source_url "https://github.com/iamkanishka/appwrite"
+  @source_url "https://github.com/iamkanishka/aurinko.ex.git"
   @version "0.1.0"
 
   def project do
