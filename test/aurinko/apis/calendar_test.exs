@@ -1,8 +1,9 @@
 defmodule Aurinko.API.CalendarTest do
   use ExUnit.Case, async: true
 
-  alias Aurinko.Types.{Calendar, CalendarEvent, SyncResult}
-  alias Aurinko.Test.Support
+  alias Aurinko.API.Calendar, as: CalendarAPI
+  alias Aurinko.Error
+  alias Aurinko.Types.{Calendar, CalendarEvent}
 
   import Aurinko.Test.Support
 
@@ -65,9 +66,9 @@ defmodule Aurinko.API.CalendarTest do
 
   describe "create_event/4 input validation" do
     test "returns error when required fields are missing" do
-      result = Aurinko.API.Calendar.create_event("token", "primary", %{subject: "Missing times"})
+      result = CalendarAPI.create_event("token", "primary", %{subject: "Missing times"})
 
-      assert {:error, %Aurinko.Error{type: :invalid_params}} = result
+      assert {:error, %Error{type: :invalid_params}} = result
     end
   end
 end
