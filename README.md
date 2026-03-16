@@ -1,9 +1,9 @@
 # Aurinko
 
-[![Hex.pm](https://img.shields.io/hexpm/v/aurinko_ex.svg)](https://hex.pm/packages/aurinko_ex)
-[![Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/aurinko_ex)
-[![CI](https://github.com/yourusername/aurinko_ex/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/aurinko_ex/actions)
-[![Coverage Status](https://coveralls.io/repos/github/yourusername/aurinko_ex/badge.svg)](https://coveralls.io/github/yourusername/aurinko_ex)
+[![Hex.pm](https://img.shields.io/hexpm/v/aurinko.svg)](https://hex.pm/packages/aurinko)
+[![Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/aurinko)
+[![CI](https://github.com/yourusername/aurinko/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/aurinko/actions)
+[![Coverage Status](https://coveralls.io/repos/github/yourusername/aurinko/badge.svg)](https://coveralls.io/github/yourusername/aurinko)
 
 A production-grade Elixir client for the [Aurinko Unified Mailbox API](https://docs.aurinko.io) — covering **Email, Calendar, Contacts, Tasks, Webhooks, and Booking** across Google Workspace, Office 365, Outlook, MS Exchange, Zoho Mail, iCloud, and IMAP.
 
@@ -25,12 +25,12 @@ A production-grade Elixir client for the [Aurinko Unified Mailbox API](https://d
 
 ## Installation
 
-Add `aurinko_ex` to your dependencies in `mix.exs`:
+Add `aurinko` to your dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:aurinko_ex, "~> 0.1"}
+    {:aurinko, "~> 0.1"}
   ]
 end
 ```
@@ -47,7 +47,7 @@ mix deps.get
 
 ```elixir
 # config/config.exs
-config :aurinko_ex,
+config :aurinko,
   client_id: System.get_env("AURINKO_CLIENT_ID"),
   client_secret: System.get_env("AURINKO_CLIENT_SECRET"),
   base_url: "https://api.aurinko.io/v1",   # default
@@ -60,7 +60,7 @@ config :aurinko_ex,
 For runtime configuration (e.g. `runtime.exs`):
 
 ```elixir
-config :aurinko_ex,
+config :aurinko,
   client_id: System.fetch_env!("AURINKO_CLIENT_ID"),
   client_secret: System.fetch_env!("AURINKO_CLIENT_SECRET")
 ```
@@ -185,7 +185,7 @@ end
   time_min: ~U[2024-01-01 00:00:00Z],
   time_max: ~U[2024-12-31 23:59:59Z]
 )
-{:ok, page} = Aurinko.APIs.Calendar.sync_updated(token, "primary", sync.sync_updated_token)
+{:ok, page} = Aurinko.API.Calendar.sync_updated(token, "primary", sync.sync_updated_token)
 ```
 
 ---
@@ -244,9 +244,9 @@ Aurinko emits telemetry events for every HTTP request:
 
 | Event | Measurements | Metadata |
 |---|---|---|
-| `[:aurinko_ex, :request, :start]` | `system_time` | `method`, `path` |
-| `[:aurinko_ex, :request, :stop]` | `duration` | `method`, `path`, `result` |
-| `[:aurinko_ex, :request, :exception]` | `duration` | `method`, `path`, `kind`, `reason` |
+| `[:aurinko, :request, :start]` | `system_time` | `method`, `path` |
+| `[:aurinko, :request, :stop]` | `duration` | `method`, `path`, `result` |
+| `[:aurinko, :request, :exception]` | `duration` | `method`, `path`, `kind`, `reason` |
 
 Attach the built-in logger for development:
 
@@ -259,7 +259,7 @@ Or attach your own handler:
 ```elixir
 :telemetry.attach(
   "my-handler",
-  [:aurinko_ex, :request, :stop],
+  [:aurinko, :request, :stop],
   fn _event, %{duration: d}, %{method: m, path: p, result: r}, _cfg ->
     ms = System.convert_time_unit(d, :native, :millisecond)
     Logger.info("Aurinko #{m} #{p} → #{r} (#{ms}ms)")
