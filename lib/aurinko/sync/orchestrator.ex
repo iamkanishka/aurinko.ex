@@ -34,8 +34,8 @@ defmodule Aurinko.Sync.Orchestrator do
 
   require Logger
 
-  alias Aurinko.API.{Email, Calendar, Contacts}
-  alias Aurinko.{Paginator, Error}
+  alias Aurinko.API.{Calendar, Contacts, Email}
+  alias Aurinko.{Error, Paginator}
 
   @type sync_result :: %{
           updated: non_neg_integer(),
@@ -58,56 +58,49 @@ defmodule Aurinko.Sync.Orchestrator do
 
   @doc """
   Run a full or incremental email sync.
-
-  If `get_tokens` returns existing delta tokens, an incremental sync is performed.
-  Otherwise, a new full sync is started.
-
-  ## Required options
-
-  - `:on_updated` — Called with each batch of updated message maps
-  - `:on_deleted` — Called with each batch of deleted message IDs
-  - `:get_tokens` — Returns `%{sync_updated_token: ..., sync_deleted_token: ...}` or `nil`
-  - `:save_tokens` — Persists the new delta tokens after a successful sync
   """
   @spec sync_email(String.t(), sync_opts()) :: {:ok, sync_result()} | {:error, Error.t()}
   def sync_email(token, opts) do
     start_time = System.monotonic_time(:millisecond)
+    on_updated = Keyword.get(opts, :on_updated, fn _ -> :ok end)
+    on_deleted = Keyword.get(opts, :on_deleted, fn _ -> :ok end)
+    save_tokens = Keyword.fetch!(opts, :save_tokens)
 
     Logger.info("[Aurinko.Sync] Starting email sync")
 
-    with {:ok, {updated_token, deleted_token}} <- resolve_email_tokens(token, opts) do
-      on_updated = Keyword.get(opts, :on_updated, fn _ -> :ok end)
-      on_deleted = Keyword.get(opts, :on_deleted, fn _ -> :ok end)
-      save_tokens = Keyword.fetch!(opts, :save_tokens)
+    case resolve_email_tokens(token, opts) do
+      {:ok, {updated_token, deleted_token}} ->
+        Logger.debug("[Aurinko.Sync] Email sync tokens resolved — running delta")
 
-      Logger.debug("[Aurinko.Sync] Email sync tokens resolved — running delta")
+        with {:ok, {new_updated_token, updated_count}} <-
+               drain_sync(token, updated_token, &Email.sync_updated(&1, &2), on_updated),
+             {:ok, {new_deleted_token, deleted_count}} <-
+               drain_sync(token, deleted_token, &Email.sync_deleted(&1, &2), on_deleted) do
+          new_tokens = %{
+            sync_updated_token: new_updated_token,
+            sync_deleted_token: new_deleted_token
+          }
 
-      with {:ok, {new_updated_token, updated_count}} <-
-             drain_sync(token, updated_token, &Email.sync_updated(&1, &2), on_updated),
-           {:ok, {new_deleted_token, deleted_count}} <-
-             drain_sync(token, deleted_token, &Email.sync_deleted(&1, &2), on_deleted) do
-        new_tokens = %{
-          sync_updated_token: new_updated_token,
-          sync_deleted_token: new_deleted_token
-        }
+          save_tokens.(new_tokens)
 
-        save_tokens.(new_tokens)
+          duration = System.monotonic_time(:millisecond) - start_time
+          emit_sync_complete(:email, updated_count, deleted_count, duration)
 
-        duration = System.monotonic_time(:millisecond) - start_time
+          Logger.info(
+            "[Aurinko.Sync] Email sync complete — #{updated_count} updated, " <>
+              "#{deleted_count} deleted in #{duration}ms"
+          )
 
-        emit_sync_complete(:email, updated_count, deleted_count, duration)
+          {:ok,
+           Map.merge(new_tokens, %{
+             updated: updated_count,
+             deleted: deleted_count,
+             duration_ms: duration
+           })}
+        end
 
-        Logger.info(
-          "[Aurinko.Sync] Email sync complete — #{updated_count} updated, #{deleted_count} deleted in #{duration}ms"
-        )
-
-        {:ok,
-         Map.merge(new_tokens, %{
-           updated: updated_count,
-           deleted: deleted_count,
-           duration_ms: duration
-         })}
-      end
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -120,48 +113,74 @@ defmodule Aurinko.Sync.Orchestrator do
           {:ok, sync_result()} | {:error, Error.t()}
   def sync_calendar(token, calendar_id, opts) do
     start_time = System.monotonic_time(:millisecond)
+    on_updated = Keyword.get(opts, :on_updated, fn _ -> :ok end)
+    on_deleted = Keyword.get(opts, :on_deleted, fn _ -> :ok end)
+    save_tokens = Keyword.fetch!(opts, :save_tokens)
 
     Logger.info("[Aurinko.Sync] Starting calendar sync for #{calendar_id}")
 
-    with {:ok, {updated_token, deleted_token}} <-
-           resolve_calendar_tokens(token, calendar_id, opts) do
-      on_updated = Keyword.get(opts, :on_updated, fn _ -> :ok end)
-      on_deleted = Keyword.get(opts, :on_deleted, fn _ -> :ok end)
-      save_tokens = Keyword.fetch!(opts, :save_tokens)
+    case resolve_calendar_tokens(token, calendar_id, opts) do
+      {:ok, {updated_token, deleted_token}} ->
+        drain_calendar_sync(
+          token,
+          calendar_id,
+          updated_token,
+          deleted_token,
+          on_updated,
+          on_deleted,
+          save_tokens,
+          start_time
+        )
 
-      with {:ok, {new_updated_token, updated_count}} <-
-             drain_sync(
-               token,
-               updated_token,
-               fn t, dt -> Calendar.sync_updated(t, calendar_id, dt) end,
-               on_updated
-             ),
-           {:ok, {new_deleted_token, deleted_count}} <-
-             drain_sync(
-               token,
-               deleted_token,
-               fn t, dt -> Calendar.sync_deleted(t, calendar_id, dt) end,
-               on_deleted
-             ) do
-        new_tokens = %{
-          sync_updated_token: new_updated_token,
-          sync_deleted_token: new_deleted_token
-        }
-
-        save_tokens.(new_tokens)
-
-        duration = System.monotonic_time(:millisecond) - start_time
-        emit_sync_complete(:calendar, updated_count, deleted_count, duration)
-
-        {:ok,
-         Map.merge(new_tokens, %{
-           updated: updated_count,
-           deleted: deleted_count,
-           duration_ms: duration
-         })}
-      end
+      {:error, _} = err ->
+        err
     end
   end
+
+  defp drain_calendar_sync(
+         token,
+         calendar_id,
+         updated_token,
+         deleted_token,
+         on_updated,
+         on_deleted,
+         save_tokens,
+         start_time
+       ) do
+    with {:ok, {new_updated_token, updated_count}} <-
+           drain_sync(
+             token,
+             updated_token,
+             fn t, dt -> Calendar.sync_updated(t, calendar_id, dt) end,
+             on_updated
+           ),
+         {:ok, {new_deleted_token, deleted_count}} <-
+           drain_sync(
+             token,
+             deleted_token,
+             fn t, dt -> Calendar.sync_deleted(t, calendar_id, dt) end,
+             on_deleted
+           ) do
+      new_tokens = %{
+        sync_updated_token: new_updated_token,
+        sync_deleted_token: new_deleted_token
+      }
+
+      save_tokens.(new_tokens)
+
+      duration = System.monotonic_time(:millisecond) - start_time
+      emit_sync_complete(:calendar, updated_count, deleted_count, duration)
+
+      {:ok,
+       Map.merge(new_tokens, %{
+         updated: updated_count,
+         deleted: deleted_count,
+         duration_ms: duration
+       })}
+    end
+  end
+
+  # <-- ADDED (this was the missing end)
 
   # ── Contacts sync ─────────────────────────────────────────────────────────────
 
@@ -171,29 +190,37 @@ defmodule Aurinko.Sync.Orchestrator do
   @spec sync_contacts(String.t(), sync_opts()) :: {:ok, sync_result()} | {:error, Error.t()}
   def sync_contacts(token, opts) do
     start_time = System.monotonic_time(:millisecond)
+    on_updated = Keyword.get(opts, :on_updated, fn _ -> :ok end)
+    save_tokens = Keyword.fetch!(opts, :save_tokens)
 
     Logger.info("[Aurinko.Sync] Starting contacts sync")
 
-    with {:ok, {updated_token, _}} <- resolve_contacts_tokens(token, opts) do
-      on_updated = Keyword.get(opts, :on_updated, fn _ -> :ok end)
-      _on_deleted = Keyword.get(opts, :on_deleted, fn _ -> :ok end)
-      save_tokens = Keyword.fetch!(opts, :save_tokens)
+    case resolve_contacts_tokens(token, opts) do
+      {:ok, {updated_token, _deleted_token}} ->
+        case drain_sync(token, updated_token, &Contacts.sync_updated(&1, &2), on_updated) do
+          {:ok, {new_updated_token, updated_count}} ->
+            new_tokens = %{sync_updated_token: new_updated_token, sync_deleted_token: nil}
+            save_tokens.(new_tokens)
 
-      with {:ok, {new_updated_token, updated_count}} <-
-             drain_sync(token, updated_token, &Contacts.sync_updated(&1, &2), on_updated) do
-        new_tokens = %{sync_updated_token: new_updated_token, sync_deleted_token: nil}
-        save_tokens.(new_tokens)
+            duration = System.monotonic_time(:millisecond) - start_time
+            emit_sync_complete(:contacts, updated_count, 0, duration)
 
-        duration = System.monotonic_time(:millisecond) - start_time
-        emit_sync_complete(:contacts, updated_count, 0, duration)
+            {:ok,
+             Map.merge(new_tokens, %{updated: updated_count, deleted: 0, duration_ms: duration})}
 
-        {:ok, Map.merge(new_tokens, %{updated: updated_count, deleted: 0, duration_ms: duration})}
-      end
+          {:error, _} = err ->
+            err
+        end
+
+      {:error, _} = err ->
+        err
     end
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────
 
+  @spec resolve_email_tokens(String.t(), sync_opts()) ::
+          {:ok, {String.t(), String.t() | nil}} | {:error, Error.t()}
   defp resolve_email_tokens(token, opts) do
     get_tokens = Keyword.get(opts, :get_tokens, fn -> nil end)
     days_within = Keyword.get(opts, :days_within, 30)
@@ -203,14 +230,21 @@ defmodule Aurinko.Sync.Orchestrator do
         {:ok, {upd, del}}
 
       _ ->
-        # No saved tokens — start a fresh sync
-        with {:ok, sync} <-
-               start_sync_with_retry(fn -> Email.start_sync(token, days_within: days_within) end) do
-          {:ok, {sync.sync_updated_token, sync.sync_deleted_token}}
-        end
+        start_email_sync(token, days_within)
     end
   end
 
+  @spec start_email_sync(String.t(), pos_integer()) ::
+          {:ok, {String.t(), String.t() | nil}} | {:error, Error.t()}
+  defp start_email_sync(token, days_within) do
+    case start_sync_with_retry(fn -> Email.start_sync(token, days_within: days_within) end) do
+      {:ok, sync} -> {:ok, {sync.sync_updated_token, sync.sync_deleted_token}}
+      {:error, _} = err -> err
+    end
+  end
+
+  @spec resolve_calendar_tokens(String.t(), String.t(), sync_opts()) ::
+          {:ok, {String.t(), String.t() | nil}} | {:error, Error.t()}
   defp resolve_calendar_tokens(token, calendar_id, opts) do
     get_tokens = Keyword.get(opts, :get_tokens, fn -> nil end)
 
@@ -219,18 +253,26 @@ defmodule Aurinko.Sync.Orchestrator do
         {:ok, {upd, del}}
 
       _ ->
-        time_min = Keyword.get(opts, :time_min, DateTime.add(DateTime.utc_now(), -365, :day))
-        time_max = Keyword.get(opts, :time_max, DateTime.add(DateTime.utc_now(), 365, :day))
-
-        with {:ok, sync} <-
-               start_sync_with_retry(fn ->
-                 Calendar.start_sync(token, calendar_id, time_min: time_min, time_max: time_max)
-               end) do
-          {:ok, {sync.sync_updated_token, sync.sync_deleted_token}}
-        end
+        start_calendar_sync(token, calendar_id, opts)
     end
   end
 
+  @spec start_calendar_sync(String.t(), String.t(), sync_opts()) ::
+          {:ok, {String.t(), String.t() | nil}} | {:error, Error.t()}
+  defp start_calendar_sync(token, calendar_id, opts) do
+    time_min = Keyword.get(opts, :time_min, DateTime.add(DateTime.utc_now(), -365, :day))
+    time_max = Keyword.get(opts, :time_max, DateTime.add(DateTime.utc_now(), 365, :day))
+
+    case start_sync_with_retry(fn ->
+           Calendar.start_sync(token, calendar_id, time_min: time_min, time_max: time_max)
+         end) do
+      {:ok, sync} -> {:ok, {sync.sync_updated_token, sync.sync_deleted_token}}
+      {:error, _} = err -> err
+    end
+  end
+
+  @spec resolve_contacts_tokens(String.t(), sync_opts()) ::
+          {:ok, {String.t(), nil}} | {:error, Error.t()}
   defp resolve_contacts_tokens(token, opts) do
     get_tokens = Keyword.get(opts, :get_tokens, fn -> nil end)
 
@@ -239,13 +281,18 @@ defmodule Aurinko.Sync.Orchestrator do
         {:ok, {upd, nil}}
 
       _ ->
-        with {:ok, sync} <- start_sync_with_retry(fn -> Contacts.start_sync(token) end) do
-          {:ok, {sync.sync_updated_token, nil}}
-        end
+        start_contacts_sync(token)
     end
   end
 
-  # Poll until sync is ready (Aurinko may need a few seconds to initialise)
+  @spec start_contacts_sync(String.t()) :: {:ok, {String.t(), nil}} | {:error, Error.t()}
+  defp start_contacts_sync(token) do
+    case start_sync_with_retry(fn -> Contacts.start_sync(token) end) do
+      {:ok, sync} -> {:ok, {sync.sync_updated_token, nil}}
+      {:error, _} = err -> err
+    end
+  end
+
   defp start_sync_with_retry(start_fn, attempt \\ 0) do
     case start_fn.() do
       {:ok, %{ready: true} = sync} ->
@@ -266,14 +313,10 @@ defmodule Aurinko.Sync.Orchestrator do
     end
   end
 
-  # Drain all pages for a single sync direction (updated or deleted)
   defp drain_sync(token, delta_token, fetch_fn, on_batch) do
-    _final_token_ref = {:done, delta_token}
-
     result =
       Paginator.sync_stream(token, delta_token, fetch_fn,
         on_delta: fn new_tok ->
-          # Store new delta token via process dict so we can return it
           Process.put(:aurinko_sync_new_delta, new_tok)
         end
       )
@@ -298,7 +341,7 @@ defmodule Aurinko.Sync.Orchestrator do
 
   defp emit_sync_complete(resource, updated, deleted, duration_ms) do
     :telemetry.execute(
-      [:aurinko_ex, :sync, :complete],
+      [:aurinko, :sync, :complete],
       %{updated: updated, deleted: deleted, duration_ms: duration_ms},
       %{resource: resource}
     )
