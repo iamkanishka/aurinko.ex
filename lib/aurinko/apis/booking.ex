@@ -5,8 +5,8 @@ defmodule Aurinko.API.Booking do
   Supports listing booking profiles and fetching available time slots for meetings.
   """
 
-  alias Aurinko.HTTP.Client
   alias Aurinko.Error
+  alias Aurinko.HTTP.Client
 
   @doc "List booking profiles."
   @spec list_booking_profiles(String.t(), keyword()) ::
@@ -14,8 +14,12 @@ defmodule Aurinko.API.Booking do
   def list_booking_profiles(token, opts \\ []) do
     params = opts |> Keyword.take([:limit, :page_token]) |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/booking/profiles", params: params) do
-      {:ok, body["records"] || []}
+    case Client.get(token, "/booking/profiles", params: params) do
+      {:ok, body} ->
+        {:ok, body["records"] || []}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -37,9 +41,12 @@ defmodule Aurinko.API.Booking do
       timezone: params[:timezone] || "UTC"
     }
 
-    with {:ok, body} <-
-           Client.get(token, "/booking/profiles/#{profile_id}/availability", params: query) do
-      {:ok, body["slots"] || body["records"] || []}
+    case Client.get(token, "/booking/profiles/#{profile_id}/availability", params: query) do
+      {:ok, body} ->
+        {:ok, body["slots"] || body["records"] || []}
+
+      {:error, _} = err ->
+        err
     end
   end
 
