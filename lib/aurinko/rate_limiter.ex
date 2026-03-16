@@ -37,7 +37,7 @@ defmodule Aurinko.RateLimiter do
 
   # ── Types ─────────────────────────────────────────────────────────────────────
 
-  @type check_result :: :ok | {:wait, non_neg_integer()} | {:error, :rate_limit_exceeded}
+  @type check_result :: :ok | {:wait, non_neg_integer()}
 
   @type bucket :: %{
           tokens: float(),
@@ -71,7 +71,6 @@ defmodule Aurinko.RateLimiter do
   Returns:
   - `:ok` — request may proceed immediately
   - `{:wait, ms}` — caller should sleep `ms` milliseconds and retry
-  - `{:error, :rate_limit_exceeded}` — bucket exhausted even with waiting (not used in standard config)
   """
   @spec check_rate(String.t()) :: check_result()
   def check_rate(token) when is_binary(token) do
@@ -79,9 +78,12 @@ defmodule Aurinko.RateLimiter do
       token_key = {:token, hashed_token(token)}
       global_key = :global
 
-      with :ok <- consume_token(token_key, per_token_rate(), per_token_capacity()),
-           :ok <- consume_token(global_key, global_rate(), global_capacity()) do
-        :ok
+      case consume_token(token_key, per_token_rate(), per_token_capacity()) do
+        :ok ->
+          consume_token(global_key, global_rate(), global_capacity())
+
+        {:wait, _} = wait ->
+          wait
       end
     else
       :ok
