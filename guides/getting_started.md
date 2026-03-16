@@ -14,7 +14,7 @@ Add `aurinko` to your dependencies:
 ```elixir
 # mix.exs
 defp deps do
-  [{:aurinko, "~> 0.2.0"}]
+  [{:aurinko, "~> 0.2.1"}]
 end
 ```
 

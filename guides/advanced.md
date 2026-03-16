@@ -1,6 +1,6 @@
 # Advanced Usage Guide
 
-This guide covers the production-grade features added in v0.2.0: caching, rate limiting,
+This guide covers the production-grade features added in v0.2.1: caching, rate limiting,
 circuit breaking, streaming pagination, sync orchestration, webhooks, telemetry, and error handling.
 
 ---
