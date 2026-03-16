@@ -5,9 +5,9 @@ defmodule Aurinko.API.Tasks do
   Supports Google Tasks, Microsoft To Do, and Exchange Tasks.
   """
 
-  alias Aurinko.HTTP.Client
-  alias Aurinko.Types.{Task, Pagination}
   alias Aurinko.Error
+  alias Aurinko.HTTP.Client
+  alias Aurinko.Types.{Pagination, Task}
 
   @doc "List all task lists."
   @spec list_task_lists(String.t(), keyword()) ::
@@ -15,8 +15,12 @@ defmodule Aurinko.API.Tasks do
   def list_task_lists(token, opts \\ []) do
     params = opts |> Keyword.take([:limit, :page_token]) |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/tasks/lists", params: params) do
-      {:ok, body["records"] || []}
+    case Client.get(token, "/tasks/lists", params: params) do
+      {:ok, body} ->
+        {:ok, body["records"] || []}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -34,8 +38,12 @@ defmodule Aurinko.API.Tasks do
   def list_tasks(token, task_list_id, opts \\ []) do
     params = opts |> Keyword.take([:limit, :page_token, :status]) |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/tasks/lists/#{task_list_id}/tasks", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/tasks/lists/#{task_list_id}/tasks", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -55,8 +63,12 @@ defmodule Aurinko.API.Tasks do
   def create_task(token, task_list_id, %{title: _} = params) do
     body = build_task_body(params)
 
-    with {:ok, resp} <- Client.post(token, "/tasks/lists/#{task_list_id}/tasks", body) do
-      {:ok, Task.from_response(resp)}
+    case Client.post(token, "/tasks/lists/#{task_list_id}/tasks", body) do
+      {:ok, resp} ->
+        {:ok, Task.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -69,9 +81,12 @@ defmodule Aurinko.API.Tasks do
   def update_task(token, task_list_id, task_id, params) do
     body = build_task_body(params)
 
-    with {:ok, resp} <-
-           Client.patch(token, "/tasks/lists/#{task_list_id}/tasks/#{task_id}", body) do
-      {:ok, Task.from_response(resp)}
+    case Client.patch(token, "/tasks/lists/#{task_list_id}/tasks/#{task_id}", body) do
+      {:ok, resp} ->
+        {:ok, Task.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -79,8 +94,12 @@ defmodule Aurinko.API.Tasks do
   @spec delete_task(String.t(), String.t(), String.t()) ::
           :ok | {:error, Error.t()}
   def delete_task(token, task_list_id, task_id) do
-    with {:ok, _} <- Client.delete(token, "/tasks/lists/#{task_list_id}/tasks/#{task_id}") do
-      :ok
+    case Client.delete(token, "/tasks/lists/#{task_list_id}/tasks/#{task_id}") do
+      {:ok, _} ->
+        :ok
+
+      {:error, _} = err ->
+        err
     end
   end
 
