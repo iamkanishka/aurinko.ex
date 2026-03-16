@@ -1,7 +1,7 @@
 defmodule Aurinko.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.2.1"
   @source_url "https://github.com/iamkanishka/aurinko.ex"
   @description """
   Production-grade Elixir client for the Aurinko Unified Mailbox API.
@@ -13,7 +13,7 @@ defmodule Aurinko.MixProject do
     [
       app: :aurinko,
       version: @version,
-      elixir: "~> 1.16",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -71,7 +71,9 @@ defmodule Aurinko.MixProject do
       links: %{
         "GitHub" => @source_url,
         "Aurinko Docs" => "https://docs.aurinko.io",
-        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"
+        "Getting Started" => "#{@source_url}/blob/master/docs/getting_started.md",
+        "Advanced Guide" => "#{@source_url}/blob/master/docs/advanced.md",
+        "Changelog" => "#{@source_url}/blob/master/CHANGELOG.md"
       },
       maintainers: ["Kanishka Naik"],
       files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md guides)
