@@ -48,7 +48,7 @@ defmodule Aurinko do
       })
   """
 
-  alias Aurinko.API.{Email, Calendar, Contacts, Tasks, Webhooks, Booking}
+  alias Aurinko.API.{Booking, Calendar, Contacts, Email, Tasks, Webhooks}
   alias Aurinko.Auth
 
   # ── Auth ─────────────────────────────────────────────────────────────────────
