@@ -1,13 +1,9 @@
 defmodule Aurinko.API.EmailTest do
   use ExUnit.Case, async: true
 
-  alias Aurinko.API.Email
   alias Aurinko.Types.{Email, Pagination, SyncResult}
-  alias Aurinko.Test.Support
 
   import Aurinko.Test.Support
-
-  @token valid_token()
 
   describe "list_messages/2" do
     test "returns a Pagination struct with email records" do
@@ -31,7 +27,7 @@ defmodule Aurinko.API.EmailTest do
     test "parses all fields from a response map" do
       raw = email_fixture(%{"subject" => "Parsed!", "isRead" => true})
 
-      email = Aurinko.Types.Email.from_response(raw)
+      email = Email.from_response(raw)
 
       assert email.subject == "Parsed!"
       assert email.is_read == true
@@ -43,7 +39,7 @@ defmodule Aurinko.API.EmailTest do
     test "handles missing optional fields gracefully" do
       raw = %{"id" => "msg_1"}
 
-      email = Aurinko.Types.Email.from_response(raw)
+      email = Email.from_response(raw)
 
       assert email.id == "msg_1"
       assert email.subject == nil
@@ -55,7 +51,7 @@ defmodule Aurinko.API.EmailTest do
     test "parses ISO8601 datetime strings" do
       raw = email_fixture(%{"sentAt" => "2024-06-01T10:00:00Z"})
 
-      email = Aurinko.Types.Email.from_response(raw)
+      email = Email.from_response(raw)
 
       assert %DateTime{year: 2024, month: 6, day: 1} = email.sent_at
     end
@@ -63,7 +59,7 @@ defmodule Aurinko.API.EmailTest do
     test "handles invalid datetime strings without crashing" do
       raw = email_fixture(%{"sentAt" => "not-a-date"})
 
-      email = Aurinko.Types.Email.from_response(raw)
+      email = Email.from_response(raw)
 
       assert email.sent_at == nil
     end
@@ -99,7 +95,7 @@ defmodule Aurinko.API.EmailTest do
           next_delta_token: "delta_tok"
         )
 
-      page = Aurinko.Types.Pagination.from_response(raw)
+      page = Pagination.from_response(raw)
 
       assert length(page.records) == 1
       assert page.next_page_token == "page_tok"
@@ -111,6 +107,6 @@ defmodule Aurinko.API.EmailTest do
   # ── Helpers ──────────────────────────────────────────────────────────────────
 
   defp parse_list_response(body) do
-    {:ok, Aurinko.Types.Pagination.from_response(body)}
+    {:ok, Pagination.from_response(body)}
   end
 end
