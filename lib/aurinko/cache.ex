@@ -8,7 +8,7 @@ defmodule Aurinko.Cache do
 
   ## Configuration
 
-      config :aurinko_ex,
+      config :aurinko,
         cache_enabled: true,
         cache_ttl: 60_000,          # ms; default 60 seconds
         cache_max_size: 5_000,      # max entries before LRU eviction
@@ -28,7 +28,7 @@ defmodule Aurinko.Cache do
 
   require Logger
 
-  @table :aurinko_ex_cache
+  @table :aurinko_cache
   @default_ttl 60_000
   @default_max_size 5_000
   @default_cleanup_interval 30_000
@@ -57,7 +57,7 @@ defmodule Aurinko.Cache do
 
     cleanup_interval =
       Keyword.get(opts, :cleanup_interval) ||
-        Application.get_env(:aurinko_ex, :cache_cleanup_interval, @default_cleanup_interval)
+        Application.get_env(:aurinko, :cache_cleanup_interval, @default_cleanup_interval)
 
     schedule_cleanup(cleanup_interval)
 
@@ -81,23 +81,27 @@ defmodule Aurinko.Cache do
   """
   @spec get(cache_key()) :: {:ok, term()} | nil
   def get(key) when is_binary(key) do
-    if enabled?() do
-      case :ets.lookup(@table, key) do
-        [{^key, value, expires_at, _inserted_at}] ->
-          if System.monotonic_time(:millisecond) < expires_at do
-            bump_stat(:hits)
-            {:ok, value}
-          else
-            :ets.delete(@table, key)
-            bump_stat(:misses)
-            nil
-          end
+    if enabled?(), do: lookup_entry(key), else: nil
+  end
 
-        [] ->
-          bump_stat(:misses)
-          nil
-      end
+  defp lookup_entry(key) do
+    case :ets.lookup(@table, key) do
+      [{^key, value, expires_at, _inserted_at}] ->
+        check_expiry(key, value, expires_at)
+
+      [] ->
+        bump_stat(:misses)
+        nil
+    end
+  end
+
+  defp check_expiry(key, value, expires_at) do
+    if System.monotonic_time(:millisecond) < expires_at do
+      bump_stat(:hits)
+      {:ok, value}
     else
+      :ets.delete(@table, key)
+      bump_stat(:misses)
       nil
     end
   end
@@ -209,11 +213,11 @@ defmodule Aurinko.Cache do
 
   # ── Private helpers ───────────────────────────────────────────────────────────
 
-  defp enabled?, do: Application.get_env(:aurinko_ex, :cache_enabled, true)
-  defp configured_ttl, do: Application.get_env(:aurinko_ex, :cache_ttl, @default_ttl)
+  defp enabled?, do: Application.get_env(:aurinko, :cache_enabled, true)
+  defp configured_ttl, do: Application.get_env(:aurinko, :cache_ttl, @default_ttl)
 
   defp configured_max_size,
-    do: Application.get_env(:aurinko_ex, :cache_max_size, @default_max_size)
+    do: Application.get_env(:aurinko, :cache_max_size, @default_max_size)
 
   defp token_prefix(token) do
     :crypto.hash(:sha256, token)
@@ -250,11 +254,9 @@ defmodule Aurinko.Cache do
   end
 
   defp bump_stat(counter) do
-    try do
-      state = GenServer.call(__MODULE__, {:get_counter, counter}, 50)
-      :counters.add(state, 1, 1)
-    catch
-      _, _ -> :ok
-    end
+    state = GenServer.call(__MODULE__, {:get_counter, counter}, 50)
+    :counters.add(state, 1, 1)
+  catch
+    _, _ -> :ok
   end
 end
