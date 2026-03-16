@@ -71,8 +71,8 @@ defmodule Aurinko.MixProject do
       links: %{
         "GitHub" => @source_url,
         "Aurinko Docs" => "https://docs.aurinko.io",
-        "Getting Started" => "#{@source_url}/blob/master/docs/getting_started.md",
-        "Advanced Guide" => "#{@source_url}/blob/master/docs/advanced.md",
+        "Getting Started" => "#{@source_url}/blob/master/guides/getting_started.md",
+        "Advanced Guide" => "#{@source_url}/blob/master/guides/advanced.md",
         "Changelog" => "#{@source_url}/blob/master/CHANGELOG.md"
       },
       maintainers: ["Kanishka Naik"],
