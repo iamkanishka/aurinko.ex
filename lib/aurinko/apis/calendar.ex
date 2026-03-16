@@ -19,9 +19,9 @@ defmodule Aurinko.API.Calendar do
       {:ok, page} = Aurinko.Calendar.sync_updated(token, "primary", sync.sync_updated_token)
   """
 
+  alias Aurinko.Error
   alias Aurinko.HTTP.Client
   alias Aurinko.Types.{Calendar, CalendarEvent, Pagination, SyncResult}
-  alias Aurinko.Error
 
   # ── Calendars ────────────────────────────────────────────────────────────────
 
@@ -33,9 +33,13 @@ defmodule Aurinko.API.Calendar do
   def list_calendars(token, opts \\ []) do
     params = opts |> Keyword.take([:limit, :page_token]) |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/calendars", params: params) do
-      calendars = (body["records"] || []) |> Enum.map(&Calendar.from_response/1)
-      {:ok, calendars}
+    case Client.get(token, "/calendars", params: params) do
+      {:ok, body} ->
+        calendars = (body["records"] || []) |> Enum.map(&Calendar.from_response/1)
+        {:ok, calendars}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -45,8 +49,12 @@ defmodule Aurinko.API.Calendar do
   @spec get_calendar(String.t(), String.t()) ::
           {:ok, Calendar.t()} | {:error, Error.t()}
   def get_calendar(token, calendar_id) do
-    with {:ok, body} <- Client.get(token, "/calendars/#{calendar_id}") do
-      {:ok, Calendar.from_response(body)}
+    case Client.get(token, "/calendars/#{calendar_id}") do
+      {:ok, body} ->
+        {:ok, Calendar.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -74,9 +82,12 @@ defmodule Aurinko.API.Calendar do
         {k, v} -> {camelize(k), v}
       end)
 
-    with {:ok, body} <-
-           Client.post(token, "/calendars/#{calendar_id}/events/range", nil, params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.post(token, "/calendars/#{calendar_id}/events/range", nil, params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -86,8 +97,12 @@ defmodule Aurinko.API.Calendar do
   @spec get_event(String.t(), String.t(), String.t()) ::
           {:ok, CalendarEvent.t()} | {:error, Error.t()}
   def get_event(token, calendar_id, event_id) do
-    with {:ok, body} <- Client.get(token, "/calendars/#{calendar_id}/events/#{event_id}") do
-      {:ok, CalendarEvent.from_response(body)}
+    case Client.get(token, "/calendars/#{calendar_id}/events/#{event_id}") do
+      {:ok, body} ->
+        {:ok, CalendarEvent.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -128,9 +143,12 @@ defmodule Aurinko.API.Calendar do
     body = build_event_body(params)
     query = build_event_query(opts)
 
-    with {:ok, resp} <-
-           Client.post(token, "/calendars/#{calendar_id}/events", body, params: query) do
-      {:ok, CalendarEvent.from_response(resp)}
+    case Client.post(token, "/calendars/#{calendar_id}/events", body, params: query) do
+      {:ok, resp} ->
+        {:ok, CalendarEvent.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -150,11 +168,12 @@ defmodule Aurinko.API.Calendar do
     body = build_event_body(params)
     query = build_event_query(opts)
 
-    with {:ok, resp} <-
-           Client.patch(token, "/calendars/#{calendar_id}/events/#{event_id}", body,
-             params: query
-           ) do
-      {:ok, CalendarEvent.from_response(resp)}
+    case Client.patch(token, "/calendars/#{calendar_id}/events/#{event_id}", body, params: query) do
+      {:ok, resp} ->
+        {:ok, CalendarEvent.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -170,9 +189,12 @@ defmodule Aurinko.API.Calendar do
   def delete_event(token, calendar_id, event_id, opts \\ []) do
     query = build_event_query(opts)
 
-    with {:ok, _} <-
-           Client.delete(token, "/calendars/#{calendar_id}/events/#{event_id}", params: query) do
-      :ok
+    case Client.delete(token, "/calendars/#{calendar_id}/events/#{event_id}", params: query) do
+      {:ok, _} ->
+        :ok
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -199,8 +221,12 @@ defmodule Aurinko.API.Calendar do
         {k, v} -> {camelize(k), v}
       end)
 
-    with {:ok, body} <- Client.post(token, "/calendars/#{calendar_id}/sync", nil, params: params) do
-      {:ok, SyncResult.from_response(body)}
+    case Client.post(token, "/calendars/#{calendar_id}/sync", nil, params: params) do
+      {:ok, body} ->
+        {:ok, SyncResult.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -216,9 +242,12 @@ defmodule Aurinko.API.Calendar do
       |> Keyword.put(:delta_token, delta_token)
       |> camelize_params()
 
-    with {:ok, body} <-
-           Client.get(token, "/calendars/#{calendar_id}/sync/updated", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/calendars/#{calendar_id}/sync/updated", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -234,9 +263,12 @@ defmodule Aurinko.API.Calendar do
       |> Keyword.put(:delta_token, delta_token)
       |> camelize_params()
 
-    with {:ok, body} <-
-           Client.get(token, "/calendars/#{calendar_id}/sync/deleted", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/calendars/#{calendar_id}/sync/deleted", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
