@@ -54,7 +54,23 @@ defmodule Aurinko.Telemetry do
   end
 
   @doc "All telemetry event names emitted by Aurinko."
-  @spec events() :: list(list(atom()))
+  @spec events() :: [
+          [
+            :aurinko
+            | :circuit_breaker
+            | :closed
+            | :complete
+            | :opened
+            | :rejected
+            | :request
+            | :retry
+            | :start
+            | :stop
+            | :sync,
+            ...
+          ],
+          ...
+        ]
   def events, do: @all_events
 
   @doc """
