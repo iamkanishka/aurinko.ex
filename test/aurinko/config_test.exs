@@ -5,7 +5,11 @@ defmodule Aurinko.ConfigTest do
 
   setup do
     original = Application.get_all_env(:aurinko)
-    on_exit(fn -> Enum.each(original, fn {k, v} -> Application.put_env(:aurinko, k, v) end) end)
+
+    on_exit(fn ->
+      Enum.each(original, fn {k, v} -> Application.put_env(:aurinko, k, v) end)
+    end)
+
     :ok
   end
 
