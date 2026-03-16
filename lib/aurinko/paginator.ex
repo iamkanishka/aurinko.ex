@@ -109,36 +109,34 @@ defmodule Aurinko.Paginator do
 
     Stream.resource(
       fn -> {:token, initial_token} end,
-      fn
-        :done ->
-          {:halt, :done}
-
-        {:token, token_value} ->
-          case fetch_fn.(token, token_value) do
-            {:ok,
-             %Pagination{records: records, next_page_token: page_tok, next_delta_token: delta_tok}} ->
-              next_state =
-                cond do
-                  not is_nil(page_tok) ->
-                    {:token, page_tok}
-
-                  not is_nil(delta_tok) ->
-                    on_delta.(delta_tok)
-                    :done
-
-                  true ->
-                    :done
-                end
-
-              {records, next_state}
-
-            {:error, reason} ->
-              {[{:error, reason}], :done}
-          end
-      end,
+      fn state -> sync_step(state, token, fetch_fn, on_delta) end,
       fn _ -> :ok end
     )
   end
+
+  defp sync_step(:done, _token, _fetch_fn, _on_delta), do: {:halt, :done}
+
+  defp sync_step({:token, token_value}, token, fetch_fn, on_delta) do
+    case fetch_fn.(token, token_value) do
+      {:ok, %Pagination{records: records, next_page_token: page_tok, next_delta_token: delta_tok}} ->
+        next_state = next_sync_state(page_tok, delta_tok, on_delta)
+        {records, next_state}
+
+      {:error, reason} ->
+        {[{:error, reason}], :done}
+    end
+  end
+
+  defp next_sync_state(page_tok, _delta_tok, _on_delta) when not is_nil(page_tok) do
+    {:token, page_tok}
+  end
+
+  defp next_sync_state(_page_tok, delta_tok, on_delta) when not is_nil(delta_tok) do
+    on_delta.(delta_tok)
+    :done
+  end
+
+  defp next_sync_state(_page_tok, _delta_tok, _on_delta), do: :done
 
   @doc """
   Collect all pages synchronously and return a flat list of records.
@@ -169,21 +167,22 @@ defmodule Aurinko.Paginator do
 
     case fetch_fn.(token, fetch_opts) do
       {:ok, %Pagination{records: records, next_page_token: next_page, next_delta_token: _delta}} ->
-        next_state = if next_page, do: {:next_page, next_page}, else: :done
-        {records, next_state}
+        {records, page_next_state(next_page)}
 
       {:ok, %{records: records, next_page_token: next_page}} ->
-        next_state = if next_page, do: {:next_page, next_page}, else: :done
-        {records, next_state}
+        {records, page_next_state(next_page)}
 
       {:ok, records} when is_list(records) ->
         {records, :done}
 
       {:error, reason} ->
-        case on_error do
-          :halt -> {[{:error, reason}], :done}
-          :skip -> {[], :done}
-        end
+        fetch_error_state(reason, on_error)
     end
   end
+
+  defp page_next_state(nil), do: :done
+  defp page_next_state(next_page), do: {:next_page, next_page}
+
+  defp fetch_error_state(reason, :halt), do: {[{:error, reason}], :done}
+  defp fetch_error_state(_reason, :skip), do: {[], :done}
 end
