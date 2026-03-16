@@ -1,8 +1,7 @@
 defmodule Aurinko.Sync.OrchestratorTest do
   use ExUnit.Case, async: false
 
-  alias Aurinko.Sync.Orchestrator
-  alias Aurinko.Types.{Pagination, SyncResult}
+  alias Aurinko.Types.SyncResult
 
   # We test the Orchestrator by mocking the token/pagination logic directly
   # via process dictionary injection (no external deps needed)
@@ -17,14 +16,14 @@ defmodule Aurinko.Sync.OrchestratorTest do
         %{sync_updated_token: "upd_tok", sync_deleted_token: "del_tok"}
       end
 
-      save_tokens = fn _toks -> :ok end
+      _save_tokens = fn _toks -> :ok end
 
-      on_updated = fn batch ->
+      _on_updated = fn batch ->
         :ets.insert(received, {:updated, batch})
         :ok
       end
 
-      on_deleted = fn _batch -> :ok end
+      _on_deleted = fn _batch -> :ok end
 
       # We need to mock the Email.sync_updated/2 and Email.sync_deleted/2 calls.
       # Since we can't use Mox without defining behaviour stubs here,
