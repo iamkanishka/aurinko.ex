@@ -14,8 +14,8 @@ defmodule Aurinko.API.Webhooks do
       })
   """
 
-  alias Aurinko.HTTP.Client
   alias Aurinko.Error
+  alias Aurinko.HTTP.Client
 
   @doc "List active webhook subscriptions."
   @spec list_subscriptions(String.t(), keyword()) ::
@@ -23,8 +23,12 @@ defmodule Aurinko.API.Webhooks do
   def list_subscriptions(token, opts \\ []) do
     params = opts |> Keyword.take([:limit, :page_token]) |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/subscriptions", params: params) do
-      {:ok, body["records"] || []}
+    case Client.get(token, "/subscriptions", params: params) do
+      {:ok, body} ->
+        {:ok, body["records"] || []}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -58,8 +62,12 @@ defmodule Aurinko.API.Webhooks do
   @spec delete_subscription(String.t(), String.t()) ::
           :ok | {:error, Error.t()}
   def delete_subscription(token, id) do
-    with {:ok, _} <- Client.delete(token, "/subscriptions/#{id}") do
-      :ok
+    case Client.delete(token, "/subscriptions/#{id}") do
+      {:ok, _} ->
+        :ok
+
+      {:error, _} = err ->
+        err
     end
   end
 
