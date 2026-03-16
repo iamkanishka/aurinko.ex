@@ -5,9 +5,9 @@ defmodule Aurinko.API.Contacts do
   Supports Google, Office 365, Outlook, and Exchange.
   """
 
+  alias Aurinko.Error
   alias Aurinko.HTTP.Client
   alias Aurinko.Types.{Contact, Pagination, SyncResult}
-  alias Aurinko.Error
 
   @doc """
   List contacts.
@@ -23,8 +23,12 @@ defmodule Aurinko.API.Contacts do
   def list_contacts(token, opts \\ []) do
     params = opts |> Keyword.take([:limit, :page_token, :q]) |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/contacts", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/contacts", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -32,8 +36,12 @@ defmodule Aurinko.API.Contacts do
   @spec get_contact(String.t(), String.t()) ::
           {:ok, Contact.t()} | {:error, Error.t()}
   def get_contact(token, id) do
-    with {:ok, body} <- Client.get(token, "/contacts/#{id}") do
-      {:ok, Contact.from_response(body)}
+    case Client.get(token, "/contacts/#{id}") do
+      {:ok, body} ->
+        {:ok, Contact.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -52,8 +60,12 @@ defmodule Aurinko.API.Contacts do
   def create_contact(token, params) do
     body = build_contact_body(params)
 
-    with {:ok, resp} <- Client.post(token, "/contacts", body) do
-      {:ok, Contact.from_response(resp)}
+    case Client.post(token, "/contacts", body) do
+      {:ok, resp} ->
+        {:ok, Contact.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -63,8 +75,12 @@ defmodule Aurinko.API.Contacts do
   def update_contact(token, id, params) do
     body = build_contact_body(params)
 
-    with {:ok, resp} <- Client.patch(token, "/contacts/#{id}", body) do
-      {:ok, Contact.from_response(resp)}
+    case Client.patch(token, "/contacts/#{id}", body) do
+      {:ok, resp} ->
+        {:ok, Contact.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -72,8 +88,12 @@ defmodule Aurinko.API.Contacts do
   @spec delete_contact(String.t(), String.t()) ::
           :ok | {:error, Error.t()}
   def delete_contact(token, id) do
-    with {:ok, _} <- Client.delete(token, "/contacts/#{id}") do
-      :ok
+    case Client.delete(token, "/contacts/#{id}") do
+      {:ok, _} ->
+        :ok
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -83,8 +103,12 @@ defmodule Aurinko.API.Contacts do
   def start_sync(token, opts \\ []) do
     params = opts |> Keyword.take([:await_ready]) |> camelize_params()
 
-    with {:ok, body} <- Client.post(token, "/contacts/sync", nil, params: params) do
-      {:ok, SyncResult.from_response(body)}
+    case Client.post(token, "/contacts/sync", nil, params: params) do
+      {:ok, body} ->
+        {:ok, SyncResult.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -98,8 +122,12 @@ defmodule Aurinko.API.Contacts do
       |> Keyword.put(:delta_token, delta_token)
       |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/contacts/sync/updated", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/contacts/sync/updated", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
