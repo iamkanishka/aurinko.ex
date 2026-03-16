@@ -146,8 +146,9 @@ defmodule Aurinko.CacheTest do
   describe "disabled cache" do
     test "get always returns nil when cache is disabled" do
       Application.put_env(:aurinko, :cache_enabled, false)
-      Cache.put("key", "value")
-      assert nil == Cache.get("key")
+      key = "disabled_cache_test_#{System.unique_integer([:positive])}"
+      Cache.put(key, "value")
+      assert nil == Cache.get(key)
       Application.put_env(:aurinko, :cache_enabled, true)
     end
 
