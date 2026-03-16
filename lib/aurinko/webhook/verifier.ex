@@ -67,7 +67,7 @@ defmodule Aurinko.Webhook.Verifier do
         |> String.replace_leading("sha256=", "")
         |> String.downcase()
 
-      if Plug.Crypto.secure_compare(expected, received) do
+      if secure_compare(expected, received) do
         :ok
       else
         {:error, :invalid_signature}
@@ -86,6 +86,13 @@ defmodule Aurinko.Webhook.Verifier do
   def sign(body, secret) when is_binary(body) and is_binary(secret) do
     "sha256=" <>
       (:crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower))
+  end
+
+  # Constant-time binary comparison to prevent timing attacks.
+  # Compares digests of both values so length differences don't leak information.
+  @spec secure_compare(binary(), binary()) :: boolean()
+  defp secure_compare(a, b) when is_binary(a) and is_binary(b) do
+    :crypto.hash(:sha256, a) == :crypto.hash(:sha256, b)
   end
 end
 
@@ -122,6 +129,8 @@ defmodule Aurinko.Webhook.Handler do
   @type meta :: %{raw_body: binary(), verified: boolean()}
   @type result :: :ok | {:error, term()}
 
+  alias Aurinko.Webhook.Verifier
+
   @doc "Handle a parsed Aurinko webhook event."
   @callback handle_event(event_type(), payload(), meta()) :: result()
 
@@ -150,6 +159,6 @@ defmodule Aurinko.Webhook.Handler do
   defp maybe_verify(_body, nil, _opts), do: :ok
 
   defp maybe_verify(body, signature, opts) do
-    Aurinko.Webhook.Verifier.verify(body, signature, opts)
+    Verifier.verify(body, signature, opts)
   end
 end
