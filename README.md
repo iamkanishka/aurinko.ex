@@ -4,6 +4,7 @@
 [![Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/aurinko)
 [![CI](https://github.com/yourusername/aurinko/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/aurinko/actions)
 [![Coverage Status](https://coveralls.io/repos/github/yourusername/aurinko/badge.svg)](https://coveralls.io/github/yourusername/aurinko)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 A production-grade Elixir client for the [Aurinko Unified Mailbox API](https://docs.aurinko.io) — covering **Email, Calendar, Contacts, Tasks, Webhooks, and Booking** across Google Workspace, Office 365, Outlook, MS Exchange, Zoho Mail, iCloud, and IMAP.
 
@@ -14,12 +15,19 @@ A production-grade Elixir client for the [Aurinko Unified Mailbox API](https://d
 - ✅ Full coverage of Aurinko's Unified APIs (Email, Calendar, Contacts, Tasks, Webhooks, Booking)
 - ✅ Type-safe structs for all response objects
 - ✅ Delta/incremental sync model for all data categories
+- ✅ ETS-backed response cache with TTL and LRU eviction
+- ✅ Token-bucket rate limiter (per-account + global) with automatic backoff
+- ✅ Per-endpoint circuit breaker (closed → open → half-open)
 - ✅ Automatic retry with exponential backoff and jitter
-- ✅ Rate limit handling (respects `Retry-After` headers)
-- ✅ Telemetry instrumentation via `:telemetry`
+- ✅ `Retry-After` header parsing for 429 responses
+- ✅ Lazy `Stream`-based pagination — never load all pages into memory
+- ✅ High-level sync orchestrator for email, calendar, and contacts
+- ✅ HMAC-SHA256 webhook signature verification (no extra dependencies)
+- ✅ 7 `:telemetry` events covering requests, retries, circuit breaker, and sync
+- ✅ Structured JSON log formatter for Datadog, Loki, and GCP
 - ✅ Structured, tagged error types (`{:error, %Aurinko.Error{}}`)
 - ✅ Config validation with `NimbleOptions`
-- ✅ Fully documented with typespecs and `@doc` coverage
+- ✅ Full typespecs, `@spec`, and `@doc` coverage
 
 ---
 
@@ -30,12 +38,10 @@ Add `aurinko` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:aurinko, "~> 0.1"}
+    {:aurinko, "~> 0.2.0"}
   ]
 end
 ```
-
-Then run:
 
 ```bash
 mix deps.get
@@ -45,35 +51,62 @@ mix deps.get
 
 ## Configuration
 
+### Minimum required
+
 ```elixir
-# config/config.exs
+# config/runtime.exs
 config :aurinko,
-  client_id: System.get_env("AURINKO_CLIENT_ID"),
-  client_secret: System.get_env("AURINKO_CLIENT_SECRET"),
-  base_url: "https://api.aurinko.io/v1",   # default
-  timeout: 30_000,                          # ms, default: 30s
-  retry_attempts: 3,                        # default
-  retry_delay: 500,                         # ms base, uses exponential backoff
-  pool_size: 10                             # HTTP connection pool
+  client_id:     System.fetch_env!("AURINKO_CLIENT_ID"),
+  client_secret: System.fetch_env!("AURINKO_CLIENT_SECRET")
 ```
 
-For runtime configuration (e.g. `runtime.exs`):
+### Full configuration reference
 
 ```elixir
+# config/runtime.exs
 config :aurinko,
-  client_id: System.fetch_env!("AURINKO_CLIENT_ID"),
-  client_secret: System.fetch_env!("AURINKO_CLIENT_SECRET")
+  # Required
+  client_id:     System.fetch_env!("AURINKO_CLIENT_ID"),
+  client_secret: System.fetch_env!("AURINKO_CLIENT_SECRET"),
+
+  # HTTP
+  base_url:        "https://api.aurinko.io/v1",  # default
+  timeout:         30_000,                        # ms (default: 30 s)
+  retry_attempts:  3,                             # default
+  retry_delay:     500,                           # ms base for exponential backoff
+
+  # Cache
+  cache_enabled:          true,
+  cache_ttl:              60_000,    # ms per entry (default: 60 s)
+  cache_max_size:         5_000,     # entries before LRU eviction
+  cache_cleanup_interval: 30_000,    # expired-entry sweep interval in ms
+
+  # Rate limiter
+  rate_limiter_enabled:  true,
+  rate_limit_per_token:  10,         # req/sec per account token
+  rate_limit_global:     100,        # req/sec across all tokens
+  rate_limit_burst:      5,          # burst headroom above steady-state
+
+  # Circuit breaker
+  circuit_breaker_enabled:   true,
+  circuit_breaker_threshold: 5,      # consecutive failures before opening
+  circuit_breaker_timeout:   30_000, # ms before half-open probe
+
+  # Observability
+  attach_default_telemetry: false,   # auto-attach logger on start
+  log_level:                :info,
+  webhook_secret:           System.get_env("AURINKO_WEBHOOK_SECRET")
 ```
 
 ---
 
 ## Authentication
 
-### Step 1 — Build the authorization URL and redirect the user
+### Step 1 — Build the authorization URL
 
 ```elixir
 url = Aurinko.authorize_url(
-  service_type: "Google",                          # or "Office365", "Zoho", "EWS", "IMAP"
+  service_type: "Google",   # "Office365" | "Zoho" | "EWS" | "IMAP" | "Outlook" | ...
   scopes: ["Mail.Read", "Mail.Send", "Calendars.ReadWrite", "Contacts.Read"],
   return_url: "https://yourapp.com/auth/callback",
   state: "csrf_token_here"
@@ -82,13 +115,19 @@ url = Aurinko.authorize_url(
 # Redirect the user's browser to `url`
 ```
 
-### Step 2 — Exchange the authorization code for a token
+### Step 2 — Exchange the code for a token
 
 ```elixir
 {:ok, %{token: token, account_id: id, email: email}} =
   Aurinko.Auth.exchange_code(params["code"])
 
-# Store `token` securely — use it for all subsequent API calls
+# Store `token` securely — pass it to every subsequent API call
+```
+
+### Refresh a token
+
+```elixir
+{:ok, %{token: new_token}} = Aurinko.Auth.refresh_token(refresh_token)
 ```
 
 ---
@@ -96,22 +135,21 @@ url = Aurinko.authorize_url(
 ## Email API
 
 ```elixir
-# List messages (with optional search)
+# List messages with optional search
 {:ok, page} = Aurinko.list_messages(token,
   limit: 25,
   q: "from:[email protected] is:unread"
 )
 
-# Access records
-Enum.each(page.records, fn raw_msg ->
-  msg = Aurinko.Types.Email.from_response(raw_msg)
+Enum.each(page.records, fn raw ->
+  msg = Aurinko.Types.Email.from_response(raw)
   IO.puts("#{msg.subject} — from #{msg.from.address}")
 end)
 
 # Get a single message
 {:ok, msg} = Aurinko.get_message(token, "msg_id_123", body_type: "html")
 
-# Send a message with tracking
+# Send a message with open/reply tracking
 {:ok, sent} = Aurinko.send_message(token, %{
   to: [%{address: "[email protected]", name: "Recipient"}],
   subject: "Hello from Elixir!",
@@ -120,19 +158,28 @@ end)
   tracking: %{opens: true, thread_replies: true}
 })
 
-# Start email sync
-{:ok, sync} = Aurinko.start_email_sync(token, days_within: 30)
+# Create a draft
+{:ok, draft} = Aurinko.APIs.Email.create_draft(token, %{
+  to: [%{address: "[email protected]"}],
+  subject: "Draft subject"
+})
 
-# Fetch updated messages (initial full sync)
-{:ok, page} = Aurinko.get_email_sync_updated(token, sync.sync_updated_token)
+# Delta sync — start or resume
+{:ok, sync} = Aurinko.APIs.Email.start_sync(token, days_within: 30)
 
-# Continue paginating
+# Drain updated messages (handles pagination automatically)
+{:ok, page} = Aurinko.APIs.Email.sync_updated(token, sync.sync_updated_token)
+
+# Continue paginating if needed
 if page.next_page_token do
-  {:ok, next_page} = Aurinko.get_email_sync_updated(token, page.next_page_token)
+  {:ok, next} = Aurinko.APIs.Email.sync_updated(token, page.next_page_token)
 end
 
-# Next incremental sync — reuse the delta token
-{:ok, incremental} = Aurinko.get_email_sync_updated(token, page.next_delta_token)
+# Store page.next_delta_token — use it next time for incremental sync
+{:ok, incremental} = Aurinko.APIs.Email.sync_updated(token, page.next_delta_token)
+
+# List attachments
+{:ok, attachments} = Aurinko.APIs.Email.list_attachments(token, msg.id)
 ```
 
 ---
@@ -140,13 +187,13 @@ end
 ## Calendar API
 
 ```elixir
-# List all calendars
-{:ok, calendars} = Aurinko.list_calendars(token)
+# List all calendars for the account
+{:ok, page} = Aurinko.list_calendars(token)
 
-# Get the primary calendar
-{:ok, cal} = Aurinko.get_calendar(token, "primary")
+# Get a specific calendar
+{:ok, cal} = Aurinko.APIs.Calendar.get_calendar(token, "primary")
 
-# List events in a range
+# List events in a date range
 {:ok, page} = Aurinko.list_events(token, "primary",
   time_min: ~U[2024-01-01 00:00:00Z],
   time_max: ~U[2024-12-31 23:59:59Z]
@@ -166,26 +213,26 @@ end
 })
 
 # Update an event
-{:ok, updated} = Aurinko.update_event(token, "primary", event.id, %{
+{:ok, updated} = Aurinko.APIs.Calendar.update_event(token, "primary", event.id, %{
   subject: "Product Review — Updated",
   location: "Google Meet"
 }, notify_attendees: true)
 
 # Delete an event
-:ok = Aurinko.delete_event(token, "primary", event.id)
+:ok = Aurinko.APIs.Calendar.delete_event(token, "primary", event.id)
 
-# Check free/busy
-{:ok, schedule} = Aurinko.free_busy(token, "primary", %{
+# Check free/busy availability
+{:ok, schedule} = Aurinko.APIs.Calendar.free_busy(token, "primary", %{
   time_min: ~U[2024-06-15 09:00:00Z],
   time_max: ~U[2024-06-15 18:00:00Z]
 })
 
-# Calendar sync
-{:ok, sync} = Aurinko.start_calendar_sync(token, "primary",
+# Delta sync
+{:ok, sync} = Aurinko.APIs.Calendar.start_sync(token, "primary",
   time_min: ~U[2024-01-01 00:00:00Z],
   time_max: ~U[2024-12-31 23:59:59Z]
 )
-{:ok, page} = Aurinko.API.Calendar.sync_updated(token, "primary", sync.sync_updated_token)
+{:ok, page} = Aurinko.APIs.Calendar.sync_updated(token, "primary", sync.sync_updated_token)
 ```
 
 ---
@@ -193,8 +240,8 @@ end
 ## Contacts API
 
 ```elixir
-{:ok, page} = Aurinko.list_contacts(token, limit: 50)
-{:ok, contact} = Aurinko.get_contact(token, "contact_id")
+{:ok, page}    = Aurinko.list_contacts(token, limit: 50)
+{:ok, contact} = Aurinko.APIs.Contacts.get_contact(token, "contact_id")
 
 {:ok, new_contact} = Aurinko.create_contact(token, %{
   given_name: "Jane",
@@ -203,7 +250,11 @@ end
   company: "Acme Corp"
 })
 
-:ok = Aurinko.delete_contact(token, contact.id)
+:ok = Aurinko.APIs.Contacts.delete_contact(token, contact.id)
+
+# Delta sync
+{:ok, sync} = Aurinko.APIs.Contacts.start_sync(token)
+{:ok, page} = Aurinko.APIs.Contacts.sync_updated(token, sync.sync_updated_token)
 ```
 
 ---
@@ -212,7 +263,7 @@ end
 
 ```elixir
 {:ok, lists} = Aurinko.list_task_lists(token)
-{:ok, page} = Aurinko.list_tasks(token, "task_list_id")
+{:ok, page}  = Aurinko.list_tasks(token, "task_list_id")
 
 {:ok, task} = Aurinko.create_task(token, "task_list_id", %{
   title: "Review PR #42",
@@ -220,12 +271,14 @@ end
   due: ~U[2024-06-20 17:00:00Z]
 })
 
-:ok = Aurinko.delete_task(token, "task_list_id", task.id)
+:ok = Aurinko.APIs.Tasks.delete_task(token, "task_list_id", task.id)
 ```
 
 ---
 
 ## Webhooks
+
+### Subscription management
 
 ```elixir
 {:ok, sub} = Aurinko.create_subscription(token, %{
@@ -233,32 +286,128 @@ end
   notification_url: "https://yourapp.com/webhooks/aurinko"
 })
 
-:ok = Aurinko.delete_subscription(token, sub["id"])
+{:ok, subs} = Aurinko.APIs.Webhooks.list_subscriptions(token)
+:ok         = Aurinko.APIs.Webhooks.delete_subscription(token, sub["id"])
 ```
+
+### Signature verification (Phoenix controller)
+
+```elixir
+defmodule MyAppWeb.WebhookController do
+  use MyAppWeb, :controller
+
+  def receive(conn, _params) do
+    signature = get_req_header(conn, "x-aurinko-signature") |> List.first()
+    raw_body  = conn.assigns[:raw_body]
+
+    case Aurinko.Webhook.Verifier.verify(raw_body, signature) do
+      :ok ->
+        Aurinko.Webhook.Handler.dispatch(MyApp.WebhookHandler, raw_body, signature)
+        send_resp(conn, 200, "ok")
+
+      {:error, :invalid_signature} ->
+        send_resp(conn, 401, "invalid signature")
+    end
+  end
+end
+```
+
+### Handler behaviour
+
+```elixir
+defmodule MyApp.WebhookHandler do
+  @behaviour Aurinko.Webhook.Handler
+
+  @impl true
+  def handle_event("email.new", %{"data" => data}, _meta),
+    do: MyApp.Mailbox.process_incoming(data)
+
+  def handle_event("calendar.event.updated", payload, _meta),
+    do: MyApp.Calendar.handle_change(payload)
+
+  def handle_event(_event, _payload, _meta), do: :ok
+end
+```
+
+---
+
+## Streaming Pagination
+
+Never manually track `next_page_token` again:
+
+```elixir
+# Lazy stream — fetches pages only as consumed
+Aurinko.Paginator.stream(token, &Aurinko.APIs.Email.list_messages/2, q: "is:unread")
+|> Stream.take(100)
+|> Enum.to_list()
+
+# Process in batches without loading everything into memory
+Aurinko.Paginator.stream(token, &Aurinko.APIs.Contacts.list_contacts/2)
+|> Stream.chunk_every(50)
+|> Stream.each(fn batch -> MyApp.Contacts.upsert_batch(batch) end)
+|> Stream.run()
+
+# Collect all pages into a list
+{:ok, all_events} = Aurinko.Paginator.collect_all(
+  token,
+  fn t, opts -> Aurinko.APIs.Calendar.list_events(t, "primary", opts) end,
+  time_min: ~U[2024-01-01 00:00:00Z],
+  time_max: ~U[2024-12-31 23:59:59Z]
+)
+```
+
+---
+
+## High-level Sync Orchestration
+
+`Aurinko.Sync.Orchestrator` manages token resolution, pagination, batching, and
+token persistence end-to-end:
+
+```elixir
+{:ok, result} = Aurinko.Sync.Orchestrator.sync_email(token,
+  days_within: 30,
+  on_updated:  fn records -> MyApp.Mailbox.upsert_many(records) end,
+  on_deleted:  fn ids     -> MyApp.Mailbox.delete_by_ids(ids) end,
+  get_tokens:  fn         -> MyApp.Store.get_delta_tokens("email") end,
+  save_tokens: fn toks    -> MyApp.Store.save_delta_tokens("email", toks) end
+)
+
+Logger.info("Sync complete: #{result.updated} updated, #{result.deleted} deleted in #{result.duration_ms}ms")
+```
+
+Calendar and contacts variants are also available — see `Aurinko.Sync.Orchestrator`.
 
 ---
 
 ## Telemetry
 
-Aurinko emits telemetry events for every HTTP request:
+Aurinko emits 7 telemetry events covering the full request lifecycle:
 
 | Event | Measurements | Metadata |
 |---|---|---|
 | `[:aurinko, :request, :start]` | `system_time` | `method`, `path` |
-| `[:aurinko, :request, :stop]` | `duration` | `method`, `path`, `result` |
-| `[:aurinko, :request, :exception]` | `duration` | `method`, `path`, `kind`, `reason` |
+| `[:aurinko, :request, :stop]` | `duration` | `method`, `path`, `result`, `cached` |
+| `[:aurinko, :request, :retry]` | `count` | `method`, `path`, `reason` |
+| `[:aurinko, :circuit_breaker, :opened]` | `count` | `circuit`, `reason` |
+| `[:aurinko, :circuit_breaker, :closed]` | `count` | `circuit` |
+| `[:aurinko, :circuit_breaker, :rejected]` | `count` | `circuit` |
+| `[:aurinko, :sync, :complete]` | `updated`, `deleted`, `duration_ms` | `resource` |
 
-Attach the built-in logger for development:
+### Zero-config structured logging
 
 ```elixir
-Aurinko.Telemetry.attach_default_logger(:debug)
+# Attach the default logger at runtime:
+Aurinko.Telemetry.attach_default_logger(:info)
+
+# Or enable at startup via config:
+config :aurinko, attach_default_telemetry: true
 ```
 
-Or attach your own handler:
+### Custom handler
 
 ```elixir
 :telemetry.attach(
-  "my-handler",
+  "my-metrics",
   [:aurinko, :request, :stop],
   fn _event, %{duration: d}, %{method: m, path: p, result: r}, _cfg ->
     ms = System.convert_time_unit(d, :native, :millisecond)
@@ -266,6 +415,15 @@ Or attach your own handler:
   end,
   nil
 )
+```
+
+### Phoenix LiveDashboard / Prometheus
+
+```elixir
+def metrics do
+  [...your_metrics..., Aurinko.Telemetry.metrics()]
+  |> List.flatten()
+end
 ```
 
 ---
@@ -282,33 +440,49 @@ case Aurinko.get_message(token, "msg_123") do
   {:error, %Aurinko.Error{type: :not_found}} ->
     Logger.warning("Message not found")
 
-  {:error, %Aurinko.Error{type: :rate_limited}} ->
-    Logger.warning("Rate limited — backing off")
-
   {:error, %Aurinko.Error{type: :auth_error, message: msg}} ->
     Logger.error("Auth failure: #{msg}")
 
+  {:error, %Aurinko.Error{type: :rate_limited}} ->
+    Logger.warning("Rate limited — all retries exhausted")
+
+  {:error, %Aurinko.Error{type: :circuit_open}} ->
+    Logger.warning("Circuit open — endpoint temporarily unavailable")
+
   {:error, %Aurinko.Error{type: :network_error}} ->
     Logger.error("Network failure")
+
+  {:error, %Aurinko.Error{type: t, message: msg, status: status}} ->
+    Logger.error("Aurinko #{t} (HTTP #{status}): #{msg}")
 end
 ```
 
-Error types: `:auth_error`, `:not_found`, `:rate_limited`, `:server_error`, `:network_error`, `:timeout`, `:invalid_params`, `:config_error`, `:unknown`
+Error types: `:auth_error` · `:not_found` · `:rate_limited` · `:server_error` · `:network_error` · `:timeout` · `:circuit_open` · `:invalid_params` · `:config_error` · `:unknown`
 
 ---
 
 ## Development
 
 ```bash
-mix setup         # Install deps
-mix lint          # Format check + Credo + Dialyzer
-mix test          # Run tests
-mix coveralls.html  # Coverage report
-mix docs          # Generate ExDoc
+mix setup           # Install deps
+mix lint            # Format check + Credo strict + Dialyzer
+mix test            # Run tests
+mix test.all        # Tests with coverage (generates coverage/index.html)
+mix docs            # Generate ExDoc
 ```
+
+---
+
+## Links
+
+- [Getting Started Guide](https://hexdocs.pm/aurinko/getting_started.html)
+- [Advanced Guide](https://hexdocs.pm/aurinko/advanced.html)
+- [API Reference](https://hexdocs.pm/aurinko)
+- [Aurinko Docs](https://docs.aurinko.io)
+- [Changelog](CHANGELOG.md)
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).
