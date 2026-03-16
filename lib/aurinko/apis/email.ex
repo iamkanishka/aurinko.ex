@@ -24,9 +24,9 @@ defmodule Aurinko.API.Email do
       {:ok, page} = Aurinko.Email.sync_updated(token, sync.sync_updated_token)
   """
 
+  alias Aurinko.Error
   alias Aurinko.HTTP.Client
   alias Aurinko.Types.{Email, Pagination, SyncResult}
-  alias Aurinko.Error
 
   # ── Messages ─────────────────────────────────────────────────────────────────
 
@@ -58,8 +58,12 @@ defmodule Aurinko.API.Email do
       |> Keyword.put_new(:limit, 20)
       |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/email/messages", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/email/messages", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -75,8 +79,12 @@ defmodule Aurinko.API.Email do
   def get_message(token, id, opts \\ []) do
     params = opts |> Keyword.take([:body_type]) |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/email/messages/#{id}", params: params) do
-      {:ok, Email.from_response(body)}
+    case Client.get(token, "/email/messages/#{id}", params: params) do
+      {:ok, body} ->
+        {:ok, Email.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -110,8 +118,12 @@ defmodule Aurinko.API.Email do
     body = build_message_body(params)
     query = if params[:body_type], do: [bodyType: params[:body_type]], else: []
 
-    with {:ok, resp} <- Client.post(token, "/email/messages", body, params: query) do
-      {:ok, Email.from_response(resp)}
+    case Client.post(token, "/email/messages", body, params: query) do
+      {:ok, resp} ->
+        {:ok, Email.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -126,8 +138,12 @@ defmodule Aurinko.API.Email do
   def update_message(token, id, params) do
     body = Map.take(params, [:is_read, :is_flagged]) |> camelize_map()
 
-    with {:ok, resp} <- Client.patch(token, "/email/messages/#{id}", body) do
-      {:ok, Email.from_response(resp)}
+    case Client.patch(token, "/email/messages/#{id}", body) do
+      {:ok, resp} ->
+        {:ok, Email.from_response(resp)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -140,10 +156,7 @@ defmodule Aurinko.API.Email do
           {:ok, map()} | {:error, Error.t()}
   def create_draft(token, params) do
     body = build_message_body(params)
-
-    with {:ok, resp} <- Client.post(token, "/email/drafts", body) do
-      {:ok, resp}
-    end
+    Client.post(token, "/email/drafts", body)
   end
 
   @doc """
@@ -152,8 +165,12 @@ defmodule Aurinko.API.Email do
   @spec delete_draft(String.t(), String.t()) ::
           :ok | {:error, Error.t()}
   def delete_draft(token, id) do
-    with {:ok, _} <- Client.delete(token, "/email/drafts/#{id}") do
-      :ok
+    case Client.delete(token, "/email/drafts/#{id}") do
+      {:ok, _} ->
+        :ok
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -180,8 +197,12 @@ defmodule Aurinko.API.Email do
       |> Keyword.take([:days_within, :await_ready])
       |> camelize_params()
 
-    with {:ok, body} <- Client.post(token, "/email/sync", nil, params: params) do
-      {:ok, SyncResult.from_response(body)}
+    case Client.post(token, "/email/sync", nil, params: params) do
+      {:ok, body} ->
+        {:ok, SyncResult.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -205,8 +226,12 @@ defmodule Aurinko.API.Email do
       |> Keyword.put(:delta_token, delta_token)
       |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/email/sync/updated", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/email/sync/updated", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -222,8 +247,12 @@ defmodule Aurinko.API.Email do
       |> Keyword.put(:delta_token, delta_token)
       |> camelize_params()
 
-    with {:ok, body} <- Client.get(token, "/email/sync/deleted", params: params) do
-      {:ok, Pagination.from_response(body)}
+    case Client.get(token, "/email/sync/deleted", params: params) do
+      {:ok, body} ->
+        {:ok, Pagination.from_response(body)}
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -235,8 +264,12 @@ defmodule Aurinko.API.Email do
   @spec list_attachments(String.t(), String.t()) ::
           {:ok, list(map())} | {:error, Error.t()}
   def list_attachments(token, message_id) do
-    with {:ok, body} <- Client.get(token, "/email/messages/#{message_id}/attachments") do
-      {:ok, body["records"] || []}
+    case Client.get(token, "/email/messages/#{message_id}/attachments") do
+      {:ok, body} ->
+        {:ok, body["records"] || []}
+
+      {:error, _} = err ->
+        err
     end
   end
 
