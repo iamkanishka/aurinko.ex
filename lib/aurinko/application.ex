@@ -9,7 +9,7 @@ defmodule Aurinko.Application do
   ├── Aurinko.Cache           ETS-backed TTL response cache
   ├── Aurinko.RateLimiter     Token-bucket rate limiter (per-token + global)
   ├── Aurinko.CircuitBreaker  Per-endpoint circuit breaker state machine
-  ├── Aurinko.HTTP.Client     Req-based HTTP client (depends on above three)
+  ├── Client     Req-based HTTP client (depends on above three)
   └── Aurinko.Telemetry       Telemetry event handler / reporter setup
   ```
 
@@ -33,6 +33,8 @@ defmodule Aurinko.Application do
   use Application
 
   require Logger
+
+  alias Aurinko.HTTP.Client
 
   @shutdown_timeout 5_000
 
@@ -74,8 +76,8 @@ defmodule Aurinko.Application do
 
       # HTTP client — depends on Cache, RateLimiter, CircuitBreaker being up
       %{
-        id: Aurinko.HTTP.Client,
-        start: {Aurinko.HTTP.Client, :start_link, [[]]},
+        id: Client,
+        start: {Client, :start_link, [[]]},
         restart: :permanent,
         shutdown: @shutdown_timeout,
         type: :worker
@@ -145,7 +147,7 @@ defmodule Aurinko.Application do
       raise Aurinko.ConfigError, """
       Aurinko failed to start due to invalid or missing configuration:
 
-        #{message}
+      #{message}
 
       Fix these issues in your config/runtime.exs or set the corresponding
       environment variables. See config/.env.example for the full variable list.
@@ -210,9 +212,13 @@ defmodule Aurinko.Application do
       cache_enabled:      #{Keyword.get(env, :cache_enabled)}
       cache_ttl:          #{Keyword.get(env, :cache_ttl)}ms
       cache_max_size:     #{Keyword.get(env, :cache_max_size)}
-      rate_limiter:       #{Keyword.get(env, :rate_limiter_enabled)} (#{Keyword.get(env, :rate_limit_per_token)} req/s per token, #{Keyword.get(env, :rate_limit_global)} global)
-      circuit_breaker:    #{Keyword.get(env, :circuit_breaker_enabled)} (threshold: #{Keyword.get(env, :circuit_breaker_threshold)}, timeout: #{Keyword.get(env, :circuit_breaker_timeout)}ms)
-      webhook_secret:     #{if Keyword.get(env, :webhook_secret), do: "[set]", else: "[NOT SET — webhook verification will fail]"}
+      rate_limiter:       #{Keyword.get(env, :rate_limiter_enabled)} \
+    (#{Keyword.get(env, :rate_limit_per_token)} req/s per token, \
+    #{Keyword.get(env, :rate_limit_global)} global)
+      circuit_breaker:    #{Keyword.get(env, :circuit_breaker_enabled)} \
+    (threshold: #{Keyword.get(env, :circuit_breaker_threshold)}, \
+    timeout: #{Keyword.get(env, :circuit_breaker_timeout)}ms)
+      webhook_secret:     #{if Keyword.get(env, :webhook_secret), do: "[set]", else: "[NOT SET]"}
       telemetry_logger:   #{Keyword.get(env, :attach_default_telemetry)}
     """)
   end
