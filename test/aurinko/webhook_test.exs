@@ -92,7 +92,7 @@ end
 defmodule Aurinko.Webhook.HandlerTest do
   use ExUnit.Case, async: true
 
-  alias Aurinko.Webhook.Handler
+  alias Aurinko.Webhook.{Handler, Verifier}
 
   defmodule TestHandler do
     @behaviour Aurinko.Webhook.Handler
@@ -121,7 +121,7 @@ defmodule Aurinko.Webhook.HandlerTest do
     test "verifies signature when provided" do
       secret = "dispatch_test_secret"
       Application.put_env(:aurinko, :webhook_secret, secret)
-      sig = Aurinko.Webhook.Verifier.sign(@body, secret)
+      sig = Verifier.sign(@body, secret)
 
       assert :ok = Handler.dispatch(TestHandler, @body, sig)
     after
