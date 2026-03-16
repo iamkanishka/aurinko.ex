@@ -13,7 +13,7 @@ defmodule Aurinko.CircuitBreaker do
 
   ## Configuration
 
-      config :aurinko_ex,
+      config :aurinko,
         circuit_breaker_enabled: true,
         circuit_breaker_threshold: 5,       # failures before opening
         circuit_breaker_timeout: 30_000,    # ms before transitioning to half-open
@@ -80,7 +80,7 @@ defmodule Aurinko.CircuitBreaker do
           Logger.warning("[Aurinko.CircuitBreaker] Circuit '#{name}' is OPEN — rejecting request")
 
           :telemetry.execute(
-            [:aurinko_ex, :circuit_breaker, :rejected],
+            [:aurinko, :circuit_breaker, :rejected],
             %{count: 1},
             %{circuit: name}
           )
@@ -129,7 +129,7 @@ defmodule Aurinko.CircuitBreaker do
           Logger.info("[Aurinko.CircuitBreaker] Circuit '#{name}' CLOSED after probe success")
 
           :telemetry.execute(
-            [:aurinko_ex, :circuit_breaker, :closed],
+            [:aurinko, :circuit_breaker, :closed],
             %{count: 1},
             %{circuit: name}
           )
@@ -161,7 +161,7 @@ defmodule Aurinko.CircuitBreaker do
           )
 
           :telemetry.execute(
-            [:aurinko_ex, :circuit_breaker, :opened],
+            [:aurinko, :circuit_breaker, :opened],
             %{count: 1},
             %{circuit: name, reason: :probe_failure}
           )
@@ -180,7 +180,7 @@ defmodule Aurinko.CircuitBreaker do
           )
 
           :telemetry.execute(
-            [:aurinko_ex, :circuit_breaker, :opened],
+            [:aurinko, :circuit_breaker, :opened],
             %{count: 1},
             %{circuit: name, reason: :threshold_exceeded}
           )
@@ -231,31 +231,29 @@ defmodule Aurinko.CircuitBreaker do
   end
 
   defp execute(name, fun) do
-    try do
-      result = fun.()
+    result = fun.()
 
-      case result do
-        {:error, %Aurinko.Error{type: type}}
-        when type in [:server_error, :network_error, :timeout] ->
-          GenServer.call(__MODULE__, {:record_failure, name})
-          result
-
-        {:error, :circuit_open} ->
-          result
-
-        _ ->
-          GenServer.call(__MODULE__, {:record_success, name})
-          result
-      end
-    rescue
-      exception ->
+    case result do
+      {:error, %Aurinko.Error{type: type}}
+      when type in [:server_error, :network_error, :timeout] ->
         GenServer.call(__MODULE__, {:record_failure, name})
-        reraise exception, __STACKTRACE__
-    catch
-      kind, reason ->
-        GenServer.call(__MODULE__, {:record_failure, name})
-        :erlang.raise(kind, reason, __STACKTRACE__)
+        result
+
+      {:error, :circuit_open} ->
+        result
+
+      _ ->
+        GenServer.call(__MODULE__, {:record_success, name})
+        result
     end
+  rescue
+    exception ->
+      GenServer.call(__MODULE__, {:record_failure, name})
+      reraise exception, __STACKTRACE__
+  catch
+    kind, reason ->
+      GenServer.call(__MODULE__, {:record_failure, name})
+      :erlang.raise(kind, reason, __STACKTRACE__)
   end
 
   defp get_circuit(name) do
@@ -276,11 +274,11 @@ defmodule Aurinko.CircuitBreaker do
     }
   end
 
-  defp enabled?, do: Application.get_env(:aurinko_ex, :circuit_breaker_enabled, true)
+  defp enabled?, do: Application.get_env(:aurinko, :circuit_breaker_enabled, true)
 
   defp configured_threshold,
-    do: Application.get_env(:aurinko_ex, :circuit_breaker_threshold, @default_threshold)
+    do: Application.get_env(:aurinko, :circuit_breaker_threshold, @default_threshold)
 
   defp configured_timeout,
-    do: Application.get_env(:aurinko_ex, :circuit_breaker_timeout, @default_timeout)
+    do: Application.get_env(:aurinko, :circuit_breaker_timeout, @default_timeout)
 end
