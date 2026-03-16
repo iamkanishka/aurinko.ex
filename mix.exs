@@ -2,7 +2,7 @@ defmodule Aurinko.MixProject do
   use Mix.Project
 
   @version "0.2.0"
-  @source_url "https://github.com/yourusername/aurinko.ex"
+  @source_url "https://github.com/iamkanishka/aurinko.ex"
   @description """
   Production-grade Elixir client for the Aurinko Unified Mailbox API.
   Covers Email, Calendar, Contacts, Tasks, Webhooks, and Booking with
@@ -67,13 +67,13 @@ defmodule Aurinko.MixProject do
   defp package do
     [
       name: "aurinko",
-      licenses: ["MIT"],
+      licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => @source_url,
         "Aurinko Docs" => "https://docs.aurinko.io",
-        "Changelog" => "#{@source_url}/CHANGELOG.md"
+        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"
       },
-      maintainers: ["Your Name"],
+      maintainers: ["Kanishka Naik"],
       files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md guides)
     ]
   end
@@ -87,7 +87,7 @@ defmodule Aurinko.MixProject do
       groups_for_modules: [
         Core: [Aurinko, Aurinko.Config],
         Authentication: [Aurinko.Auth],
-        API: [
+        APIs: [
           Aurinko.API.Email,
           Aurinko.API.Calendar,
           Aurinko.API.Contacts,
@@ -96,7 +96,11 @@ defmodule Aurinko.MixProject do
           Aurinko.API.Booking
         ],
         "Sync & Streaming": [Aurinko.Sync.Orchestrator, Aurinko.Paginator],
-        "Cache & Rate Limiting": [Aurinko.Cache, Aurinko.RateLimiter, Aurinko.CircuitBreaker],
+        "Cache & Rate Limiting": [
+          Aurinko.Cache,
+          Aurinko.RateLimiter,
+          Aurinko.CircuitBreaker
+        ],
         Observability: [Aurinko.Telemetry],
         Errors: [Aurinko.Error]
       ]
@@ -106,15 +110,9 @@ defmodule Aurinko.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "deps.compile"],
-      lint: ["format --check-formatted", "credo --strict"],
+      lint: ["format --check-formatted", "credo --strict", "dialyzer"],
       "test.all": ["coveralls.html"],
-      lint_and_coverall: ["lint", "test.all"],
-      # Quality checks
-      quality: [
-        "format --check-formatted",
-        "credo --strict",
-        "dialyzer"
-      ]
+      quality: ["lint", "test.all"]
     ]
   end
 
