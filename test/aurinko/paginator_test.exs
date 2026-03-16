@@ -11,20 +11,17 @@ defmodule Aurinko.PaginatorTest do
     fn _token, opts ->
       idx = :counters.get(counter, 1)
       :counters.add(counter, 1, 1)
-
       page_token = Keyword.get(opts, :page_token)
-
-      # Find the right page to return
-      page =
-        if is_nil(page_token) do
-          Enum.at(pages, 0)
-        else
-          Enum.find(pages, fn p -> p.next_page_token == page_token or idx > 0 end) ||
-            Enum.at(pages, idx)
-        end
-
+      page = find_page(pages, page_token, idx)
       if page, do: {:ok, page}, else: {:ok, %Pagination{records: [], next_page_token: nil}}
     end
+  end
+
+  defp find_page(pages, nil, _idx), do: Enum.at(pages, 0)
+
+  defp find_page(pages, page_token, idx) do
+    Enum.find(pages, fn p -> p.next_page_token == page_token or idx > 0 end) ||
+      Enum.at(pages, idx)
   end
 
   describe "stream/3" do
@@ -115,7 +112,8 @@ defmodule Aurinko.PaginatorTest do
         {:error, %Aurinko.Error{type: :auth_error, message: "unauthorized"}}
       end
 
-      assert {:error, %Aurinko.Error{type: :auth_error}} = Paginator.collect_all(@token, fetch_fn)
+      assert {:error, %Aurinko.Error{type: :auth_error}} =
+               Paginator.collect_all(@token, fetch_fn)
     end
 
     test "returns empty list for empty responses" do
