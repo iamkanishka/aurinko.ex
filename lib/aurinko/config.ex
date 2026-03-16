@@ -76,8 +76,10 @@ defmodule Aurinko.Config do
   """
   @spec load!() :: t()
   def load! do
-    opts = Application.get_all_env(:aurinko)
+    all_opts = Application.get_all_env(:aurinko)
     schema = NimbleOptions.new!(@schema_keys)
+    known_keys = Keyword.keys(@schema_keys)
+    opts = Keyword.take(all_opts, known_keys)
 
     case NimbleOptions.validate(opts, schema) do
       {:ok, config} ->
