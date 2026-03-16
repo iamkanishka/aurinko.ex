@@ -21,7 +21,7 @@ defmodule Aurinko.Logger.JSONFormatter do
   # timestamp is {{year,month,day},{hour,min,sec,ms}} as passed by the Logger backend
   @type log_timestamp :: {{pos_integer(), 1..12, 1..31}, {0..23, 0..59, 0..59, 0..999}}
 
-  @spec format(Logger.level(), Logger.message(), log_timestamp(), keyword()) :: iodata()
+  @spec format(Logger.level(), Logger.message(), log_timestamp(), keyword()) :: binary()
   def format(level, message, timestamp, metadata) do
     %{
       time: format_timestamp(timestamp),
